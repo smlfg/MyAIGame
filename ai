@@ -1,0 +1,188 @@
+#!/bin/bash
+# AI Command Explainer: Verständliche Alternative zu man pages
+# Provider-Kette: MiniMax (schnell, online) → Ollama (lokal, Fallback)
+
+if [ $# -eq 0 ]; then
+    echo "Verwendung: ai <befehl> [parameter]"
+    echo "Beispiel: ai grep"
+    echo "          ai chmod -R"
+    exit 1
+fi
+
+command_name="$1"
+shift
+specific_params="$*"
+
+# Doku holen: man -> help -> generic
+man_excerpt=$(man "$command_name" 2>/dev/null | head -100)
+if [ -z "$man_excerpt" ]; then
+    man_excerpt=$(help "$command_name" 2>/dev/null | head -100)
+fi
+if [ -z "$man_excerpt" ]; then
+    man_excerpt="(Keine man/help-Doku gefunden. Erkläre kurz, was der Befehl üblicherweise macht.)"
+fi
+
+# Prompt
+if [ -n "$specific_params" ]; then
+    prompt="Du bist ein geduldiger Linux-Lehrer für Anfänger.
+
+Befehl: $command_name
+Parameter: $specific_params
+Man/Help-Auszug:
+$man_excerpt
+
+Erkläre auf Deutsch:
+1. Was macht dieser Parameter?
+2. Ein praktisches Beispiel
+
+Kurz und verständlich, keine Code-Blöcke."
+else
+    prompt="Du bist ein geduldiger Linux-Lehrer für Anfänger.
+
+Befehl: $command_name
+Man/Help-Auszug:
+$man_excerpt
+
+Erkläre auf Deutsch:
+1. Was macht dieser Befehl? (1 Satz)
+2. Die 3-5 wichtigsten Parameter mit Beispielen
+3. Ein typischer Anwendungsfall
+
+Kurz und verständlich."
+fi
+
+echo "📖 Erklärung für: $command_name $specific_params"
+echo ""
+
+output_stream=$(mktemp)
+cleanup() { rm -f "$output_stream"; }
+trap cleanup EXIT
+
+ensure_daemon() {
+  if curl -sf http://127.0.0.1:7742/health > /dev/null 2>&1; then
+    return 0
+  fi
+  systemctl --user start multikanal.service >/dev/null 2>&1
+  sleep 1
+  if curl -sf http://127.0.0.1:7742/health > /dev/null 2>&1; then
+    return 0
+  fi
+  (
+    cd "$HOME/Dokumente/Pläne/ClaudeCodeWorks" 2>/dev/null && \
+    .venv/bin/multikanal daemon > /tmp/multikanal.manual.log 2>&1 &
+  )
+  sleep 1
+  if curl -sf http://127.0.0.1:7742/health > /dev/null 2>&1; then
+    return 0
+  fi
+  echo "[AUDIO] Daemon nicht erreichbar (Port 7742). Siehe /tmp/multikanal.manual.log" >&2
+  return 1
+}
+
+# --- Provider-Kette: MiniMax → Ollama ---
+_try_minimax() {
+  local api_key="${MINIMAX_API_KEY:-}"
+  if [ -z "$api_key" ] && [ -f "$HOME/Dokumente/Pläne/ClaudeCodeWorks/.env" ]; then
+    api_key=$(grep '^MINIMAX_API_KEY=' "$HOME/Dokumente/Pläne/ClaudeCodeWorks/.env" | cut -d= -f2)
+  fi
+  if [ -z "$api_key" ] && [ -f "$HOME/AiSystemForVibeCoding/.env" ]; then
+    api_key=$(grep '^MINIMAX_API_KEY=' "$HOME/AiSystemForVibeCoding/.env" | cut -d= -f2)
+  fi
+  [ -z "$api_key" ] && return 1
+
+  local timeout="${AI_MINIMAX_TIMEOUT:-15}"
+
+  # 1s Connectivity-Check
+  curl -sf --max-time 1 https://api.minimax.io/ >/dev/null 2>&1 || return 1
+
+  local payload
+  payload=$(python3 - <<'PY'
+import json, sys
+prompt = sys.stdin.read()
+print(json.dumps({
+    "model": "MiniMax-M2.1",
+    "max_tokens": 800,
+    "temperature": 0.6,
+    "messages": [
+        {"role": "system", "content": "Du bist ein geduldiger Linux-Lehrer. Antworte auf Deutsch, kurz und verständlich. Keine Code-Blöcke."},
+        {"role": "user", "content": prompt}
+    ]
+}))
+PY
+  <<< "$prompt")
+
+  local response
+  response=$(curl -s -w "HTTPSTATUS:%{http_code}" --max-time "$timeout" \
+    -X POST "https://api.minimax.io/v1/chat/completions" \
+    -H "Authorization: Bearer $api_key" \
+    -H "Content-Type: application/json" \
+    -d "$payload" 2>/dev/null)
+
+  local http body text
+  http="${response##*HTTPSTATUS:}"
+  body="${response%HTTPSTATUS:*}"
+
+  text=$(python3 - <<'PY' 2>/dev/null
+import json, re, sys
+raw = sys.stdin.read()
+try:
+    data = json.loads(raw)
+    c = data.get('choices', [{}])[0]
+    msg = c.get('message') or c.get('delta') or {}
+    rawtxt = msg.get('content') or msg.get('text') or ''
+    clean = re.sub(r'<think>.*?</think>', '', rawtxt, flags=re.DOTALL).strip()
+    print(clean)
+except Exception:
+    print("")
+PY
+  <<< "$body")
+
+  if [ -z "$text" ] || [ "$http" != "200" ]; then
+    if [ "$AI_VERBOSE" = "1" ]; then
+      if [ -n "$http" ]; then
+        echo "[MiniMax] $http" >&2
+      else
+        echo "[MiniMax] no status" >&2
+      fi
+    fi
+    return 1
+  fi
+
+  echo "$text"
+  return 0
+}
+
+_try_ollama() {
+  echo "$prompt" | ollama run codellama --nowordwrap 2>/dev/null
+}
+
+_try_minimax > "$output_stream" 2>/dev/null
+if [ ! -s "$output_stream" ]; then
+  [ "$AI_VERBOSE" = "1" ] && echo "(MiniMax nicht verfügbar, nutze lokales Ollama...)" >&2
+  _try_ollama > "$output_stream"
+fi
+
+ensure_daemon
+_narrate_text=$(cat "$output_stream")
+
+if command -v tput >/dev/null 2>&1; then
+  COLOR_BODY=$(tput setaf 7)
+  COLOR_RESET=$(tput sgr0)
+else
+  COLOR_BODY=""; COLOR_RESET=""
+fi
+printf "%s%s%s\n" "$COLOR_BODY" "$_narrate_text" "$COLOR_RESET"
+
+if [ -n "$_narrate_text" ] && curl -sf http://127.0.0.1:7742/health > /dev/null 2>&1; then
+  echo "$_narrate_text" | python3 -c "
+import json, sys, urllib.request
+text = sys.stdin.read().strip()
+if text:
+    data = json.dumps({'text': text, 'source': 'ai_explain', 'direct_tts': True}).encode()
+    req = urllib.request.Request('http://127.0.0.1:7742/narrate', data=data, headers={'Content-Type': 'application/json'})
+    try: urllib.request.urlopen(req, timeout=60)
+    except: pass
+" &
+elif [ -n "$_narrate_text" ] && command -v ai-speak >/dev/null 2>&1; then
+  echo "$_narrate_text" | ai-speak > /dev/null &
+fi
