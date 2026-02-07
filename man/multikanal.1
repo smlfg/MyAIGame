@@ -1,0 +1,120 @@
+.TH MULTIKANAL 1 "2026-02-07" "MyAIGame" "User Commands"
+.SH NAME
+multikanal \- dual-channel CLI assistant (visual + audio narration)
+.SH SYNOPSIS
+.B multikanal
+.RI [ command ]
+.br
+.B multikanal daemon
+.RI [--config FILE] [--port N] [--host ADDR]
+.br
+.B multikanal narrate
+.RI [--source NAME] ["TEXT"]
+.br
+.B multikanal health
+.br
+.B multikanal stop
+.br
+.B multikanal install-hooks
+.br
+.B multikanal agent
+.RI [--backend codex|opencode] ["PROMPT"]
+.br
+.B multikanal codex
+.RI [--one-shot] [--command PATH] ["PROMPT"]
+.br
+.B multikanal opencode
+.RI [--sse-url URL] [--daemon-url URL] [--live]
+.SH DESCRIPTION
+.B multikanal
+runs a background daemon that turns agent output into narrated audio using a provider chain (Minimax/Ollama/template/passthrough) and TTS (Edge TTS primary, Piper fallback). Commands below control the daemon, send text for narration, or hook agent backends.
+.SH COMMANDS
+.TP
+.B daemon
+Start the FastAPI daemon. Respects config and environment overrides. Use
+.B --config
+for a custom YAML, 
+.B --port
+or
+.B --host
+for ad-hoc overrides.
+.TP
+.B narrate
+Send a single piece of text to the daemon for narration. If TEXT is omitted, stdin is read.
+.TP
+.B health
+Query the daemon /health endpoint and print provider + Piper status.
+.TP
+.B stop
+Stop any currently playing audio.
+.TP
+.B install-hooks
+Install Claude Code hooks in the current project so stops/post-tool events are narrated.
+.TP
+.B agent
+Run a backend (default codex) and pipe its output to the daemon. PROMPT from arg or stdin.
+.TP
+.B codex
+Run Codex with live narration. 
+.B --one-shot
+narrates only after completion. 
+.B --command
+sets the Codex binary.
+.TP
+.B opencode
+Listen to an OpenCode SSE stream and forward assistant messages to the daemon. 
+.B --live
+sends text immediately; otherwise waits for session idle.
+.SH OPTIONS
+Most options are subcommand-specific (see above). Unknown options print help and exit 1.
+.SH ENVIRONMENT
+.TP
+.B MULTIKANAL_CONFIG
+Path to config YAML overriding defaults.
+.TP
+.B MULTIKANAL_PORT
+Port override for the daemon.
+.TP
+.B OLLAMA_HOST
+Ollama base URL override.
+.TP
+.B MINIMAX_API_KEY
+API key injected into the Minimax provider if set.
+.SH FILES
+.TP
+.I config/default.yaml
+Default configuration.
+.TP
+.I config/audio_prompt.md
+Narration prompt template.
+.TP
+.I ~/.cache/multikanal
+Audio cache directory (default).
+.TP
+.I ~/.local/share/multikanal/logs
+Log directory (default).
+.SH EXAMPLES
+.TP
+Start daemon on port 8800
+.nf
+multikanal daemon --port 8800
+.fi
+.TP
+Narrate text from stdin
+.nf
+echo "Hello from MyAIGame" | multikanal narrate --source cli
+.fi
+.TP
+Live Codex narration
+.nf
+multikanal codex "explain git branches"
+.fi
+.TP
+OpenCode SSE listener (live)
+.nf
+multikanal opencode --sse-url http://localhost:3000/events --live
+.fi
+.SH EXIT STATUS
+0 on success; non-zero on errors (e.g., daemon unreachable, invalid args).
+.SH SEE ALSO
+multikanal(5) configuration (future), piper(1), edge-tts, uvicorn, fastapi

@@ -1,0 +1,102 @@
+daemon:
+  host: 127.0.0.1
+  port: 7742
+  log_level: info
+adapters:
+  default: claude_hook
+  claude_hook:
+    enabled: true
+  codex_wrapper:
+    enabled: false
+    command: codex
+    json_mode: true
+  opencode_sse:
+    enabled: false   # Temporarily disabled to avoid reconnect loop
+    url: http://127.0.0.1:4096/global/event
+    reconnect_delay: 5
+    auto_detect: true
+narration:
+  providers:
+  - name: minimax
+    enabled: true
+    endpoint: https://api.minimax.io/v1/chat/completions
+    model: MiniMax-M2.1
+    temperature: 0.6
+    max_tokens: 600
+    timeout_seconds: 8
+  - name: ollama
+    enabled: true
+    ollama_url: http://localhost:11434
+    models:
+    - codellama:latest
+    - llama3.1:8b
+    timeout_seconds: 8
+  - name: template
+    enabled: true
+  - name: passthrough
+    enabled: true
+  models:
+  - llama3.1:8b
+  - phi4
+  - mistral-nemo
+  ollama_url: http://localhost:11434
+  max_input_chars: 2000
+  max_output_words: 200
+  timeout_seconds: 10
+  prompt_file: config/audio_prompt.md
+  language_hint: auto
+tts:
+  engine: edge  # Edge TTS primär
+  command: /home/smlflg/.local/bin/piper  # bleibt als Fallback
+  voices:
+    de: de-DE-FlorianMultilingualNeural
+    de_alt1: de-DE-KillianNeural
+    en: en-US-AriaNeural
+    en_alt: en-US-GuyNeural
+    codex: de-DE-SeraphinaMultilingualNeural
+    codex_wrapper: de-DE-SeraphinaMultilingualNeural
+    claude_code: de-DE-FlorianMultilingualNeural
+    claude_hook: de-DE-FlorianMultilingualNeural
+    claude_stop: de-DE-FlorianMultilingualNeural
+    opencode: de-DE-ConradNeural
+    opencode_live: de-DE-ConradNeural
+    opencode_final: de-DE-ConradNeural
+    opencode_sse: de-DE-ConradNeural
+    gemini: de-DE-KillianNeural
+  default_voice: de-DE-FlorianMultilingualNeural
+  # Agent → Voice-Key Mapping
+  agent_voices:
+    claude_code: claude_code
+    claude_hook: claude_hook
+    claude_stop: claude_stop
+    opencode_live: opencode_live
+    opencode_final: opencode_final
+    opencode: opencode
+    opencode_sse: opencode_sse
+    codex: codex
+    codex_final: codex
+    codex_wrapper: codex_wrapper
+    gemini: gemini
+  speed: 1.0
+  sentence_streaming: true
+playback:
+  tool: ffplay
+  volume: 1.0
+cache:
+  path: ~/.cache/multikanal
+  max_entries: 500
+logging:
+  path: ~/.local/share/multikanal/logs
+  level: info
+  json: true
+audio:
+  prefix: 'Update: '
+  stop_prefix: 'BepBup: '
+  # Source-specific prefixes
+  prefixes:
+    codex: 'Codex: '
+    codex_final: 'BepBup: '
+    opencode_live: 'OpenCode: '
+    opencode_final: 'BepBup: '
+  sink: ''
+  volume: 1.0
