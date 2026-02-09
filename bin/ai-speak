@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Pipe helper: read text from stdin, synthesize with Edge TTS, play via aplay."""
+
+from __future__ import annotations
+
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import os
+from pathlib import Path
+
+EDGE_VOICES = [
+    "de-DE-FlorianMultilingualNeural",
+    "de-DE-KatjaNeural",
+    "de-DE-ConradNeural",
+    "de-DE-AmalaNeural",
+]
+DEFAULT_RATE = "-5%"  # ~0.95x
+DEFAULT_PITCH = "+0Hz"
+MAX_CHARS = 1500
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mK]")
+
+
+def clean_text(raw: str) -> str:
+    text = ANSI_RE.sub("", raw)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def to_percent(arg: str, default: str) -> str:
+    arg = arg.strip()
+    if not arg:
+        return default
+    if arg.endswith("%"):
+        # ensure sign
+        if arg[0] in "+-":
+            return arg
+        return "+" + arg
+    try:
+        val = float(arg)
+        pct = int(round((val - 1) * 100))
+        sign = "+" if pct >= 0 else ""
+        return f"{sign}{pct}%"
+    except Exception:
+        return default
+
+
+def to_pitch(arg: str, default: str) -> str:
+    arg = arg.strip()
+    if not arg:
+        return default
+    if arg.endswith("Hz"):
+        if arg[0] in "+-":
+            return arg
+        return "+" + arg
+    try:
+        val = float(arg)
+        sign = "+" if val >= 0 else ""
+        return f"{sign}{val}Hz"
+    except Exception:
+        return default
+
+
+def pick_player() -> list[str] | None:
+    for cmd in ("paplay", "ffplay", "mpv", "play", "aplay"):
+        path = shutil.which(cmd)
+        if not path:
+            continue
+        if cmd == "paplay":
+            return [path]
+        if cmd == "ffplay":
+            return [path, "-loglevel", "quiet", "-nodisp", "-autoexit"]
+        if cmd == "mpv":
+            return [path, "--really-quiet", "--no-terminal"]
+        if cmd == "play":
+            return [path, "-q"]
+        if cmd == "aplay":
+            return [path, "-q"]
+    return None
+
+
+def synthesize_edge(text: str, rate: str, pitch: str) -> tuple[Path | None, str | None]:
+    """Try multiple Edge voices; return (path, error_msg)."""
+    for voice in EDGE_VOICES:
+        outfile = Path(tempfile.mktemp(prefix="ai-speak-", suffix=".mp3"))
+        cmd = [
+            "edge-tts",
+            "--voice",
+            voice,
+            "--text",
+            text,
+            "--rate",
+            rate,
+            "--pitch",
+            pitch,
+            "--write-media",
+            str(outfile),
+        ]
+        try:
+            res = subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=12,
+                text=True,
+            )
+            # success
+            return outfile, None
+        except Exception as exc:
+            outfile.unlink(missing_ok=True)
+            last_err = f"{voice}: {exc}"
+    return None, last_err if "last_err" in locals() else "Edge TTS unknown error"
+
+
+def synthesize_piper(text: str) -> tuple[Path | None, str | None]:
+    """Use piper if model exists; return (path, error)."""
+    model_env = os.environ.get("AISP_PIPER_MODEL")
+    if model_env:
+        model = Path(model_env).expanduser()
+    else:
+        model = Path.home() / ".local/share/piper/de-de-thorsten-medium.onnx"
+    config = model.with_suffix(".onnx.json")
+    if not model.exists() or not config.exists():
+        return None, f"Piper model/config fehlen ({model})"
+    piper_cmd = shutil.which("piper")
+    if not piper_cmd:
+        return None, "piper CLI nicht installiert"
+
+    outfile = Path(tempfile.mktemp(prefix="ai-speak-", suffix=".wav"))
+    cmd = [
+        piper_cmd,
+        "-m",
+        str(model),
+        "-c",
+        str(config),
+        "-f",
+        str(outfile),
+    ]
+    try:
+        subprocess.run(
+            cmd,
+            input=text,
+            text=True,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+        )
+        return outfile, None
+    except Exception as exc:
+        outfile.unlink(missing_ok=True)
+        return None, f"Piper fehlgeschlagen: {exc}"
+
+
+def speak_spd_say(text: str) -> None:
+    cmd = shutil.which("spd-say")
+    if not cmd:
+        raise FileNotFoundError("spd-say nicht installiert")
+    subprocess.run([cmd, text], check=True)
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    if not raw.strip():
+        return 0
+
+    rate = DEFAULT_RATE
+    pitch = DEFAULT_PITCH
+    for arg in sys.argv[1:]:
+        if arg.startswith("--rate="):
+            rate = to_percent(arg.split("=", 1)[1], DEFAULT_RATE)
+        elif arg.startswith("--pitch="):
+            pitch = to_pitch(arg.split("=", 1)[1], DEFAULT_PITCH)
+
+    text = clean_text(raw)
+    truncated = False
+    if len(text) > MAX_CHARS:
+        text = text[:MAX_CHARS]
+        truncated = True
+
+    outfile: Path | None = None
+    edge_failed_reason: str | None = None
+
+    # Try Edge TTS (online)
+    outfile, edge_failed_reason = synthesize_edge(text, rate, pitch)
+
+    # If Edge failed, try Piper offline
+    if outfile is None:
+        outfile, piper_reason = synthesize_piper(text)
+        if outfile is None:
+            # No Piper either
+            if edge_failed_reason:
+                print(f"[AUDIO] Edge TTS fehlgeschlagen: {edge_failed_reason}", file=sys.stderr)
+            print(f"[AUDIO] Piper nicht verfügbar: {piper_reason}", file=sys.stderr)
+            allow_spd = os.environ.get("AISP_ALLOW_SPD_SAY") == "1"
+            if allow_spd:
+                try:
+                    speak_spd_say(text)
+                except Exception as exc:
+                    print(f"[AUDIO] Kein TTS verfügbar ({exc})", file=sys.stderr)
+            return 0
+
+    # We have an audio file
+    player = pick_player()
+    if not player:
+        print("[AUDIO] Kein Player (paplay/ffplay/mpv/play/aplay) gefunden; fallback spd-say", file=sys.stderr)
+        allow_spd = os.environ.get("AISP_ALLOW_SPD_SAY") == "1"
+        if allow_spd:
+            try:
+                speak_spd_say(text)
+            except Exception as exc:
+                print(f"[AUDIO] Kein TTS verfügbar ({exc})", file=sys.stderr)
+        outfile.unlink(missing_ok=True)
+        return 0
+
+    try:
+        subprocess.run([*player, str(outfile)], check=False)
+    finally:
+        outfile.unlink(missing_ok=True)
+
+    if truncated:
+        print("[AUDIO] Hinweis: Text für TTS gekürzt (1500 Zeichen)", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
