@@ -24,6 +24,7 @@ narration:
     temperature: 0.6
     max_tokens: 600
     timeout_seconds: 8
+    session_history: 40   # max messages in rolling history (20 user+assistant pairs)
   - name: ollama
     enabled: true
     ollama_url: http://localhost:11434

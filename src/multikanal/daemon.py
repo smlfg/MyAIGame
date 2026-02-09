@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+import re
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -32,6 +33,7 @@ class NarrateRequest(BaseModel):
     text: str
     source: str = "unknown"
     language: str = ""
+    direct_tts: bool = False  # True = skip LLM, speak text directly
 
 
 class NarrateResponse(BaseModel):
@@ -145,6 +147,45 @@ async def narrate(req: NarrateRequest):
 
     # Mutex: only one narration at a time — no overlapping speakers
     async with _narrate_lock:
+        agent_voices = _config.get("tts", {}).get("agent_voices", {})
+        voice_key = agent_voices.get(req.source) or req.language or _tts.default_voice
+        audio_cfg = _config.get("audio", {})
+        prefixes_cfg = audio_cfg.get("prefixes", {})
+
+        # --- Direct TTS mode: skip LLM, speak text as-is ---
+        if req.direct_tts:
+            from .narration.providers import _clean_for_tts
+
+            narration = _clean_for_tts(req.text.strip())
+            if not narration:
+                return NarrateResponse(status="skipped", narration="", duration_ms=0)
+
+            if len(narration) > 1500:
+                narration = narration[:1500]
+
+            # ai_explain: remove flags/backticks for more natural speech
+            if req.source == "ai_explain":
+                narration = re.sub(r"`+", "", narration)
+                narration = " ".join(
+                    tok for tok in narration.split() if not tok.startswith("-")
+                )
+                narration = re.sub(r"\s+", " ", narration).strip()
+
+            prefix = prefixes_cfg.get(req.source, "")
+            audio_text = f"{prefix}{narration}" if prefix else narration
+
+            voice_name = _tts.resolve_voice(voice_key)
+            wav_path = await asyncio.to_thread(_tts.synthesize, audio_text, voice_name)
+            if wav_path:
+                await _play_audio(wav_path, audio_cfg)
+                await _audio_queue.join()
+
+            duration = int((time.monotonic() - t0) * 1000)
+            return NarrateResponse(
+                status="ok", narration=audio_text, cached=False, duration_ms=duration
+            )
+
+        # --- Normal mode: filter → LLM narration → TTS ---
         # Step 1: Filter the agent output
         filtered = filter_output(
             req.text,
@@ -153,13 +194,10 @@ async def narrate(req: NarrateRequest):
         if not filtered.strip():
             return NarrateResponse(status="skipped", narration="", duration_ms=0)
 
-        # Step 2: Resolve voice — agent-specific or language fallback
-        agent_voices = _config.get("tts", {}).get("agent_voices", {})
-        voice_key = agent_voices.get(req.source) or req.language or _tts.default_voice
+        # Step 2: Cache lookup
         cached_path = _cache.get(filtered, voice_key)
         if cached_path:
             await _play_audio(cached_path)
-            # Wait for queue to drain so the next narration starts after playback
             await _audio_queue.join()
             duration = int((time.monotonic() - t0) * 1000)
             return NarrateResponse(
@@ -187,10 +225,6 @@ async def narrate(req: NarrateRequest):
             )
 
         # Step 4: Prefix & Synthesize TTS
-        audio_cfg = _config.get("audio", {})
-        prefixes_cfg = audio_cfg.get("prefixes", {})
-
-        # Source-specific prefix lookup: prefixes dict → stop_prefix → default prefix
         if req.source in prefixes_cfg:
             prefix = prefixes_cfg[req.source]
         elif req.source == "claude_stop":
@@ -205,7 +239,6 @@ async def narrate(req: NarrateRequest):
         if wav_path:
             _cache.put(audio_text, voice_key, wav_path)
             await _play_audio(wav_path, audio_cfg)
-            # Wait for playback to finish before releasing the lock
             await _audio_queue.join()
 
         duration = int((time.monotonic() - t0) * 1000)
@@ -369,79 +402,6 @@ async def _opencode_sse_listener(
             )
             await asyncio.sleep(reconnect_delay)
 
-    poll_task: asyncio.Task | None = None
-
-    while True:
-        try:
-            logger.info("OpenCode SSE: connecting to %s", sse_url)
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("GET", sse_url) as response:
-                    if response.status_code == 200:
-                        _opencode_connected = True
-                        logger.info("OpenCode SSE: connected ✓")
-                        poll_task = asyncio.create_task(_poll_sessions_loop())
-
-                    event_type = ""
-                    async for line in response.aiter_lines():
-                        line_stripped = line.strip()
-                        if line_stripped:
-                            logger.debug(f"SSE received: {line_stripped[:100]}")
-
-                        if line.startswith("event:"):
-                            event_type = line[6:].strip()
-                            continue
-
-                        if not line.startswith("data:"):
-                            continue
-
-                        raw_data = line[5:].strip()
-                        text = _extract_opencode_text(event_type, raw_data)
-
-                        if text:
-                            accumulated.append(text)
-                            try:
-                                await client.post(
-                                    f"{daemon_url}/narrate",
-                                    json={"text": text, "source": "opencode_live"},
-                                    timeout=30,
-                                )
-                            except Exception as e:
-                                logger.debug("OpenCode live send failed: %s", e)
-
-                        if event_type == "session.idle" and accumulated:
-                            summary = "\n".join(accumulated)
-                            accumulated.clear()
-                            try:
-                                await client.post(
-                                    f"{daemon_url}/narrate",
-                                    json={"text": summary, "source": "opencode_final"},
-                                    timeout=60,
-                                )
-                            except Exception as e:
-                                logger.debug("OpenCode final send failed: %s", e)
-
-        except asyncio.CancelledError:
-            if poll_task:
-                poll_task.cancel()
-            _opencode_connected = False
-            logger.info("OpenCode SSE listener stopped")
-            break
-        except Exception as e:
-            if poll_task:
-                poll_task.cancel()
-            _opencode_connected = False
-            logger.info(
-                "OpenCode SSE disconnected (%s), reconnecting in %ds",
-                e,
-                reconnect_delay,
-            )
-            await asyncio.sleep(reconnect_delay)
-
-    async def _poll_sessions_loop():
-        """Hintergrund-Task für Session Polling."""
-        while True:
-            await poll_sessions()
-            await asyncio.sleep(session_poll_interval)
 
 
 def _extract_opencode_text(event_type: str, raw_data: str) -> str:
@@ -520,6 +480,14 @@ async def _play_audio(wav_path: str, audio_cfg=None):
         _audio_queue.put_nowait((wav_path, audio_cfg))
     except asyncio.QueueFull:
         logger.debug("audio queue full, skipping narration")
+
+
+@app.post("/reset-history")
+async def reset_history():
+    """Clear the rolling session history on all narration providers."""
+    if _generator:
+        _generator.reset_history()
+    return {"status": "history_cleared"}
 
 
 @app.post("/stop")

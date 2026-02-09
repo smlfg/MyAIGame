@@ -58,6 +58,7 @@ class NarrationGenerator:
                             timeout=p.get(
                                 "timeout_seconds", narr_cfg.get("timeout_seconds", 10)
                             ),
+                            session_history=p.get("session_history", 40),
                         )
                     )
                 elif name == "ollama":
@@ -112,6 +113,12 @@ class NarrationGenerator:
 
         logger.warning("all providers failed to generate narration")
         return ""
+
+    def reset_history(self) -> None:
+        """Clear session history on all providers that support it."""
+        for provider in self.providers:
+            if hasattr(provider, "clear_history"):
+                provider.clear_history()
 
     def health_map(self) -> dict[str, bool]:
         status: dict[str, bool] = {}

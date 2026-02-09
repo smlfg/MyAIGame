@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from abc import ABC, abstractmethod
+from collections import deque
 from typing import Iterable
 
 import re
@@ -46,6 +47,8 @@ class BaseNarrator(ABC):
 
 
 class MinimaxNarrator(BaseNarrator):
+    _MAX_HISTORY_CHARS = 50_000  # conservative limit for 200k token window
+
     def __init__(
         self,
         api_key: str | None,
@@ -54,6 +57,7 @@ class MinimaxNarrator(BaseNarrator):
         temperature: float = 0.6,
         max_tokens: int = 240,
         timeout: int = 6,
+        session_history: int = 40,
     ):
         super().__init__("minimax")
         self.api_key = api_key or ""
@@ -62,10 +66,29 @@ class MinimaxNarrator(BaseNarrator):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
+        self._history: deque[dict] = deque(maxlen=max(session_history, 0))
+
+    def clear_history(self) -> None:
+        """Drop all accumulated session context."""
+        self._history.clear()
+        logger.info("minimax session history cleared")
+
+    def _trim_history(self) -> list[dict]:
+        """Return history list, dropping oldest pairs if over char limit."""
+        msgs = list(self._history)
+        total = sum(len(m.get("content", "")) for m in msgs)
+        while total > self._MAX_HISTORY_CHARS and len(msgs) >= 2:
+            removed = msgs.pop(0)
+            total -= len(removed.get("content", ""))
+            removed = msgs.pop(0)
+            total -= len(removed.get("content", ""))
+        return msgs
 
     def generate(self, text: str, system_prompt: str = "", language: str = "") -> str:
         if not self.api_key or not self.endpoint or not self.model or not text.strip():
             return ""
+
+        history_msgs = self._trim_history()
 
         payload = {
             "model": self.model,
@@ -73,6 +96,7 @@ class MinimaxNarrator(BaseNarrator):
             "temperature": self.temperature,
             "messages": [
                 {"role": "system", "content": system_prompt or ""},
+                *history_msgs,
                 {"role": "user", "content": text},
             ],
         }
@@ -108,6 +132,8 @@ class MinimaxNarrator(BaseNarrator):
                 if isinstance(content, str) and content.strip():
                     content = _clean_for_tts(content)
                     if content:
+                        self._history.append({"role": "user", "content": text})
+                        self._history.append({"role": "assistant", "content": content})
                         return content
 
             # Fallback: try top-level text/content
@@ -115,6 +141,8 @@ class MinimaxNarrator(BaseNarrator):
                 if key in data and isinstance(data[key], str) and data[key].strip():
                     cleaned = _clean_for_tts(data[key])
                     if cleaned:
+                        self._history.append({"role": "user", "content": text})
+                        self._history.append({"role": "assistant", "content": cleaned})
                         return cleaned
         except Exception as exc:  # noqa: BLE001
             logger.debug("minimax failed: %s", exc)
