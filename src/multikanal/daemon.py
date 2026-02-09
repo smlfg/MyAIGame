@@ -214,7 +214,7 @@ async def narrate(req: NarrateRequest):
                 asyncio.to_thread(
                     _generator.generate, filtered, system_prompt, req.language
                 ),
-                timeout=_config.get("narration", {}).get("timeout_seconds", 15),
+                timeout=_config.get("narration", {}).get("timeout_seconds", 25),
             )
         except asyncio.TimeoutError:
             narration = ""

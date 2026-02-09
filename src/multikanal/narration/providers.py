@@ -56,7 +56,7 @@ class MinimaxNarrator(BaseNarrator):
         model: str,
         temperature: float = 0.6,
         max_tokens: int = 240,
-        timeout: int = 6,
+        timeout: int = 15,
         session_history: int = 40,
     ):
         super().__init__("minimax")
