@@ -1,1 +1,0 @@
-Ich habe einen Command <ai> <commands> dieser erklärt mit einem LLM Linux Commands
