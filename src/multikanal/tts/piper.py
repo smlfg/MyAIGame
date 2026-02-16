@@ -34,11 +34,16 @@ class PiperTTS:
         voices: dict | None = None,
         default_voice: str = "de",
         speed: float = 1.0,
+        voice_settings: dict | None = None,
     ):
         self._command = command or shutil.which("piper") or ""
         self._voices = voices or {}
         self.default_voice = default_voice
         self._speed = speed
+        # Edge-TTS rate string: speed 1.2 → "+20%", speed 0.8 → "-20%"
+        pct = int((speed - 1.0) * 100)
+        self._edge_rate = f"{pct:+d}%" if pct != 0 else "+0%"
+        self._voice_settings = voice_settings or {}
         self._spd_say = "/usr/bin/spd-say"
         self._edge_available = self._check_edge()
 
@@ -113,12 +118,27 @@ class PiperTTS:
         try:
             import edge_tts
 
+            # Per-voice rate/pitch override
+            rate = self._edge_rate
+            pitch = "+0Hz"
+            for key, settings in self._voice_settings.items():
+                if isinstance(settings, dict) and self.resolve_voice(key) == voice:
+                    rate = settings.get("rate", rate)
+                    pitch = settings.get("pitch", pitch)
+                    break
+
             async def _save():
-                communicate = edge_tts.Communicate(text, voice)
+                communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
                 await communicate.save(outpath)
 
             asyncio.run(_save())
-            logger.info("edge-tts synthesized %d chars -> %s", len(text), outpath)
+            logger.info(
+                "edge-tts synthesized %d chars (rate=%s pitch=%s) -> %s",
+                len(text),
+                rate,
+                pitch,
+                outpath,
+            )
             return Path(outpath).exists()
 
         except Exception as e:

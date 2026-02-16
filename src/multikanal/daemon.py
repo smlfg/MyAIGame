@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from .config import load_config
 from .narration.filter import filter_output
 from .narration.generator import NarrationGenerator
+from .narration.eval_log import EvalLogger
 from .narration.prompt import PromptWatcher
 from .tts.cache import AudioCache
 from .tts.piper import PiperTTS
@@ -27,6 +28,7 @@ _tts: PiperTTS | None = None
 _cache: AudioCache | None = None
 _player: AudioPlayer | None = None
 _prompt_watcher: PromptWatcher | None = None
+_eval_logger: EvalLogger | None = None
 
 
 class NarrateRequest(BaseModel):
@@ -65,6 +67,7 @@ async def lifespan(app: FastAPI):
     """Initialize components on startup, clean up on shutdown."""
     global _config, _generator, _tts, _cache, _player, _prompt_watcher, _start_time
     global _audio_queue, _queue_worker_task, _narrate_lock, _opencode_listener_task
+    global _eval_logger
 
     _start_time = time.monotonic()
     _config = load_config()
@@ -85,11 +88,19 @@ async def lifespan(app: FastAPI):
     _prompt_watcher = PromptWatcher(narr_cfg.get("prompt_file", ""))
     _prompt_watcher.start()
 
+    eval_cfg = _config.get("evaluation", {})
+    if eval_cfg.get("enabled", False):
+        eval_path = eval_cfg.get(
+            "log_file", "~/.local/share/multikanal/logs/narration_eval.jsonl"
+        )
+        _eval_logger = EvalLogger(eval_path)
+
     _tts = PiperTTS(
         command=tts_cfg.get("command", ""),
         voices=tts_cfg.get("voices", {}),
         default_voice=tts_cfg.get("default_voice", "de"),
         speed=tts_cfg.get("speed", 1.0),
+        voice_settings=tts_cfg.get("voice_settings", {}),
     )
 
     _cache = AudioCache(
@@ -176,9 +187,7 @@ async def narrate(req: NarrateRequest):
             audio_text = f"{prefix}{narration}" if prefix else narration
 
             voice_name = _tts.resolve_voice(voice_key)
-            wav_path = await asyncio.to_thread(
-                _tts.synthesize, audio_text, voice_name
-            )
+            wav_path = await asyncio.to_thread(_tts.synthesize, audio_text, voice_name)
             if wav_path:
                 await _play_audio(wav_path, audio_cfg)
                 await _audio_queue.join()
@@ -225,6 +234,17 @@ async def narrate(req: NarrateRequest):
             duration = int((time.monotonic() - t0) * 1000)
             return NarrateResponse(
                 status="no_narration", narration="", duration_ms=duration
+            )
+
+        # Eval logging
+        if _eval_logger and _generator.last_result:
+            _eval_logger.log_sample(
+                source=req.source,
+                provider=_generator.last_result.get("provider", "unknown"),
+                system_prompt=system_prompt,
+                input_text=filtered,
+                narration=narration,
+                llm_ms=_generator.last_result.get("latency_ms", 0),
             )
 
         # Step 4: Prefix & Synthesize TTS
@@ -406,7 +426,6 @@ async def _opencode_sse_listener(
                 reconnect_delay,
             )
             await asyncio.sleep(reconnect_delay)
-
 
 
 def _extract_opencode_text(event_type: str, raw_data: str) -> str:

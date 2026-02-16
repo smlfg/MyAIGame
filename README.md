@@ -95,12 +95,12 @@ systemctl --user enable --now multikanal.service
 
 ### AI Command Explainer (`bin/ai`)
 
-Linux-Befehle verständlich erklärt — mit Sprachausgabe.
+Linux-Befehle erklärt — **Power-User-Modus**: überspringt Basics, zeigt nur fortgeschrittene Optionen und Tricks. Gleicht automatisch mit deiner Shell-History ab, damit nichts erklärt wird was du eh schon nutzt.
 
 ```bash
-ai grep          # Was macht grep?
-ai chmod -R      # Was macht chmod -R?
-ai systemctl     # Was macht systemctl?
+ai grep          # Nur die krassen grep-Optionen
+ai chmod -R      # Warum -R mächtig/gefährlich ist
+ai systemctl     # Power-User Tricks mit systemctl
 ```
 
 Provider-Kette: MiniMax (~3s) → Ollama/codellama (Fallback, ~40s)
@@ -123,15 +123,37 @@ curl -X POST http://localhost:7742/narrate \
   -d '{"text": "Fertiger Text zum Vorlesen.", "source": "ai_explain", "direct_tts": true}'
 ```
 
+## Narration Quality
+
+Narrations werden auf Informationsdichte optimiert: max 40 Wörter, aktiver Ton, kein Filler. Der Prompt (`config/audio_prompt.md`) wird hot-reloaded — Änderungen wirken sofort ohne Daemon-Restart.
+
+**Evaluation-Logging:** Jede Narration wird in `~/.local/share/multikanal/logs/narration_eval.jsonl` geloggt mit automatischen Qualitäts-Heuristiken:
+
+| Metrik | Was sie misst |
+|--------|---------------|
+| `info_density` | Content-Wörter / Gesamt-Wörter |
+| `filler_count` | Verbotene Phrasen erkannt |
+| `prompt_hash` | Taggt Samples nach Prompt-Version (für A/B-Tests) |
+| `compression` | Input/Output Verdichtungsfaktor |
+
+```bash
+# Analyse-Beispiele
+jq 'select(.filler_count > 2)' ~/.local/share/multikanal/logs/narration_eval.jsonl
+jq -s '[.[].info_density] | add / length' ~/.local/share/multikanal/logs/narration_eval.jsonl
+```
+
 ## Stimmen
 
-| Agent | Stimme | Edge TTS Voice |
-|-------|--------|----------------|
-| Claude Code | Florian | de-DE-FlorianMultilingualNeural |
-| Codex | Seraphina | de-DE-SeraphinaMultilingualNeural |
-| OpenCode | Conrad | de-DE-ConradNeural |
-| Gemini | Killian | de-DE-KillianNeural |
-| ai-Command | Florian | de-DE-FlorianMultilingualNeural |
+| Agent | Stimme | Edge TTS Voice | Rate/Pitch |
+|-------|--------|----------------|------------|
+| Claude Code | Florian | de-DE-FlorianMultilingualNeural | +0% / +0Hz |
+| Codex | Seraphina | de-DE-SeraphinaMultilingualNeural | +0% / +2Hz |
+| OpenCode | Conrad | de-DE-ConradNeural | +5% / +0Hz |
+| OpenCode Live | Conrad | de-DE-ConradNeural | +8% / +0Hz |
+| Gemini | Killian | de-DE-KillianNeural | default |
+| ai-Command | Florian | de-DE-FlorianMultilingualNeural | default |
+
+Per-Voice `rate`/`pitch` sind in `config/default.yaml` unter `tts.voice_settings` konfigurierbar.
 
 ## API Endpoints
 

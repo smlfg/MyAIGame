@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Iterable
 
 from .providers import (
@@ -22,6 +23,7 @@ class NarrationGenerator:
 
     def __init__(self, providers: Iterable[BaseNarrator]):
         self.providers = list(providers)
+        self.last_result: dict = {}
 
     @classmethod
     def from_config(cls, narr_cfg: dict) -> "NarrationGenerator":
@@ -102,11 +104,17 @@ class NarrationGenerator:
 
         for provider in self.providers:
             narration = ""
+            t0 = time.monotonic()
             try:
                 narration = provider.generate(text, system_prompt, language)
             except Exception as exc:  # noqa: BLE001
                 logger.debug("provider %s raised: %s", provider.name, exc)
             if narration:
+                latency_ms = int((time.monotonic() - t0) * 1000)
+                self.last_result = {
+                    "provider": provider.name,
+                    "latency_ms": latency_ms,
+                }
                 logger.info("narration generated via provider=%s", provider.name)
                 return narration
 
