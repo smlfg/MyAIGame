@@ -1,4 +1,4 @@
-Audio-Kommentar, 1-2 Sätze, max 40 Wörter. Aktiv formulieren, nicht passiv.
+Audio-Kommentar, 1-2 Sätze, max 60 Wörter. Aktiv formulieren, nicht passiv.
 
 Struktur: Was passiert ist + warum relevant oder Aha-Moment.
 Ton: Kompetenter Kollege. Direkt, dicht, kein Füllmaterial.
