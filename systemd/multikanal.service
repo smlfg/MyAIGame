@@ -1,0 +1,18 @@
+[Unit]
+Description=MultiKanal TTS Daemon (Audio narration for coding agents)
+After=network-online.target pulseaudio.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/home/smlflg/Dokumente/Pläne/ClaudeCodeWorks/.venv/bin/multikanal daemon
+WorkingDirectory=/home/smlflg/Dokumente/Pläne/ClaudeCodeWorks
+Restart=on-failure
+RestartSec=5
+KillMode=process
+Environment="HOME=/home/smlflg"
+Environment="PATH=/home/smlflg/.local/bin:/home/smlflg/Dokumente/Pläne/ClaudeCodeWorks/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="PULSE_SERVER=unix:/run/user/1000/pulse/native"
+
+[Install]
+WantedBy=default.target
