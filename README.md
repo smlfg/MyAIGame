@@ -162,12 +162,44 @@ mkdir -p ~/.claude/hooks
 cp claude-code/hooks/*.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/*.sh
 
-# settings.json (MCP Server Config, Hook Bindings)
+# settings.json — ACHTUNG: ueberschreibt bestehende Config!
+# Besser: manuell die mcpServers-Section mergen
 cp claude-code/settings.json ~/.claude/settings.json
 ```
 
-> **Hinweis:** Die CLAUDE.md und Companion Files enthalten Referenzen auf MCP Server (OpenCode, Gemini).
-> Die muessen separat installiert und in `settings.json` konfiguriert werden.
+> **Hinweis:** `settings.json` enthaelt MCP-Server-Config, Permissions und Hook-Bindings.
+> Wenn du schon eine eigene `~/.claude/settings.json` hast, merge die Sections manuell statt blind zu kopieren.
+
+### MCP Server einrichten
+
+Das System braucht 5 MCP Server. Alle laufen ueber `npx` — kein manuelles Installieren noetig.
+
+| Server | Paket | Funktion | Pflicht? |
+|--------|-------|----------|----------|
+| **opencode** | `opencode-mcp` | Code-Delegation (Sonnet) — /chef, /test, /batch | Ja |
+| **gemini** | `gemini-mcp-tool` | Web-Research (Flash) — /research, /research-swarm | Ja |
+| **filesystem** | `@modelcontextprotocol/server-filesystem` | Dateizugriff fuer MCP-Tools | Optional |
+| **memory** | `@modelcontextprotocol/server-memory` | Persistenter Speicher zwischen Sessions | Optional |
+| **github** | via `github-mcp-wrapper.sh` | GitHub API (PRs, Issues, Repos) | Optional |
+
+**Setup:**
+
+```bash
+# Node.js muss installiert sein (npx kommt mit npm)
+node --version  # >= 18 empfohlen
+
+# OpenCode MCP braucht einen API-Key (Anthropic oder OpenRouter)
+# Siehe: https://github.com/nicholasoxford/opencode-mcp
+
+# Gemini MCP braucht einen Google AI API-Key
+# Siehe: https://github.com/jmagar/gemini-mcp-tool
+export GEMINI_API_KEY="dein-key"
+
+# GitHub MCP braucht ein GitHub Token
+export GITHUB_TOKEN="ghp_..."
+```
+
+Die Server starten automatisch wenn Claude Code sie braucht — kein Daemon, kein Service.
 
 ---
 
