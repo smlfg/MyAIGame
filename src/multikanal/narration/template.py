@@ -220,7 +220,7 @@ class TemplateNarrator(BaseNarrator):
             ],
         }
 
-    def generate(self, text: str, system_prompt: str = "", language: str = "") -> str:
+    def generate(self, text: str, system_prompt: str = "", language: str = "", session_id: str = "") -> str:
         if not text.strip():
             return ""
 

@@ -98,7 +98,7 @@ class NarrationGenerator:
 
         return cls(providers)
 
-    def generate(self, text: str, system_prompt: str = "", language: str = "") -> str:
+    def generate(self, text: str, system_prompt: str = "", language: str = "", session_id: str = "") -> str:
         if not text.strip():
             return ""
 
@@ -106,7 +106,7 @@ class NarrationGenerator:
             narration = ""
             t0 = time.monotonic()
             try:
-                narration = provider.generate(text, system_prompt, language)
+                narration = provider.generate(text, system_prompt, language, session_id=session_id)
             except Exception as exc:  # noqa: BLE001
                 logger.debug("provider %s raised: %s", provider.name, exc)
             if narration:
@@ -120,6 +120,11 @@ class NarrationGenerator:
 
         logger.warning("all providers failed to generate narration")
         return ""
+
+    def reset_history(self, session_id: str = "") -> None:
+        for provider in self.providers:
+            if hasattr(provider, "clear_history"):
+                provider.clear_history(session_id)
 
     def health_map(self) -> dict[str, bool]:
         status: dict[str, bool] = {}
