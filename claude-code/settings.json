@@ -38,6 +38,15 @@
             "async": true
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/smlflg/Dokumente/Pläne/ClaudeCodeWorks/plugins/claude-hook/hooks/codex_session_review.py",
+            "timeout": 120
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -59,6 +68,28 @@
             "type": "command",
             "command": "python3 /home/smlflg/Dokumente/Pläne/ClaudeCodeWorks/plugins/claude-hook/hooks/syntax_check.py",
             "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/smlflg/Dokumente/Pläne/ClaudeCodeWorks/plugins/claude-hook/hooks/codex_advisor.py",
+            "timeout": 90
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|Edit|Write|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/smlflg/Dokumente/Pläne/ClaudeCodeWorks/plugins/claude-hook/hooks/codex_advisor.py",
+            "timeout": 90
           }
         ]
       }
