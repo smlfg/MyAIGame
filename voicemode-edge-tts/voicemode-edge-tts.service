@@ -1,0 +1,14 @@
+[Unit]
+Description=Edge TTS OpenAI-Compatible Server for VoiceMode
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.voicemode/services/edge-tts/server.py --port 5050
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
