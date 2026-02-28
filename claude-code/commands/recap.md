@@ -14,6 +14,13 @@ Das ist die Kontext-Bruecke zwischen Sessions -- besonders wichtig fuer ADHS-Wor
 
 ## Was du tust:
 
+### 0. Falls Argument "list" oder "ls" → Logs auflisten
+Wenn `$ARGUMENTS` "list", "ls", "show" oder "uebersicht" enthaelt:
+- Liste alle Dateien in `~/.claude/session-logs/` auf
+- Zeige pro Datei: Projektname, Anzahl Sessions (zaehle `## Session` Eintraege), letztes Datum
+- Zeige KEINE Inhalte, nur die Uebersicht
+- Fertig — keine neue Session loggen!
+
 ### 1. Session analysieren
 Schau dir die aktuelle Konversation an und identifiziere:
 - **Ziel der Session:** Was wollten wir erreichen?
@@ -24,7 +31,10 @@ Schau dir die aktuelle Konversation an und identifiziere:
 - **Next Steps:** Was sollte als naechstes passieren?
 
 ### 2. SESSION_LOG.md schreiben
-Finde oder erstelle die Datei `SESSION_LOG.md` im aktuellen Projektverzeichnis.
+**IMMER** in den zentralen Ordner `~/.claude/session-logs/` schreiben!
+Dateiname: `SESSION_LOG_<projektname>.md` (Projektname aus Ordnername des CWD ableiten).
+Beispiel: CWD ist `/home/smlflg/DataEngeeneeringKEEPA/` → `~/.claude/session-logs/SESSION_LOG_DataEngeeneeringKEEPA.md`
+Falls CWD das Home-Verzeichnis ist → `~/.claude/session-logs/SESSION_LOG_general.md`
 
 Format (append am Ende der Datei):
 
@@ -70,4 +80,5 @@ Sage Samuel:
 - Datum im ISO-Format (YYYY-MM-DD)
 - Ehrlich sein -- wenn wenig passiert ist, schreib das. Kein Schoenreden.
 - Kurz halten -- max 15 Zeilen pro Session-Eintrag
-- Wenn kein Projektverzeichnis erkennbar: in CWD schreiben
+- NIEMALS in CWD schreiben! Immer `~/.claude/session-logs/`
+- Ein Log-File pro Projekt, alle an einem Ort
