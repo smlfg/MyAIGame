@@ -13,6 +13,15 @@ command_name="$1"
 shift
 specific_params="$*"
 
+# Shell-History: was nutzt der User schon?
+history_context=""
+if [ -f "$HOME/.bash_history" ]; then
+    history_context=$(grep -i "\\b${command_name}\\b" "$HOME/.bash_history" 2>/dev/null | sort | uniq -c | sort -rn | head -10)
+fi
+if [ -z "$history_context" ] && [ -f "$HOME/.zsh_history" ]; then
+    history_context=$(grep -i "\\b${command_name}\\b" "$HOME/.zsh_history" 2>/dev/null | sed 's/^[^;]*;//' | sort | uniq -c | sort -rn | head -10)
+fi
+
 # Doku holen: man -> help -> generic
 man_excerpt=$(man "$command_name" 2>/dev/null | head -100)
 if [ -z "$man_excerpt" ]; then
@@ -22,33 +31,34 @@ if [ -z "$man_excerpt" ]; then
     man_excerpt="(Keine man/help-Doku gefunden. Erkläre kurz, was der Befehl üblicherweise macht.)"
 fi
 
+# History-Block nur wenn vorhanden
+history_block=""
+if [ -n "$history_context" ]; then
+    history_block="
+Deine bisherige Nutzung (häufigste Aufrufe):
+$history_context
+
+Überspringe alles was der User offensichtlich schon kennt."
+fi
+
 # Prompt
 if [ -n "$specific_params" ]; then
-    prompt="Du bist ein geduldiger Linux-Lehrer für Anfänger.
-
-Befehl: $command_name
-Parameter: $specific_params
-Man/Help-Auszug:
+    prompt="Befehl: $command_name $specific_params
+Man-Auszug:
 $man_excerpt
-
-Erkläre auf Deutsch:
-1. Was macht dieser Parameter?
-2. Ein praktisches Beispiel
-
-Kurz und verständlich, keine Code-Blöcke."
+$history_block
+Erkläre NUR was an diesen Parametern besonders/mächtig ist.
+Keine Grundlagen. Fokus auf Tricks, Kombinationen, Edge-Cases.
+1-3 Sätze, deutsch, keine Code-Blöcke."
 else
-    prompt="Du bist ein geduldiger Linux-Lehrer für Anfänger.
-
-Befehl: $command_name
-Man/Help-Auszug:
+    prompt="Befehl: $command_name
+Man-Auszug:
 $man_excerpt
-
-Erkläre auf Deutsch:
-1. Was macht dieser Befehl? (1 Satz)
-2. Die 3-5 wichtigsten Parameter mit Beispielen
-3. Ein typischer Anwendungsfall
-
-Kurz und verständlich."
+$history_block
+Überspringe Grundlagen (was der Befehl macht, kennt jeder).
+Zeige nur: Power-User-Optionen, clevere Kombinationen, wenig bekannte Features.
+Max 5 Optionen, jeweils 1 Satz + Kurzbeispiel.
+Deutsch, keine Code-Blöcke."
 fi
 
 echo "📖 Erklärung für: $command_name $specific_params"
@@ -104,7 +114,7 @@ print(json.dumps({
     "max_tokens": 800,
     "temperature": 0.6,
     "messages": [
-        {"role": "system", "content": "Du bist ein geduldiger Linux-Lehrer. Antworte auf Deutsch, kurz und verständlich. Keine Code-Blöcke."},
+        {"role": "system", "content": "Du bist ein erfahrener Linux-Kollege. Überspringe Basics, fokussiere auf Power-User-Wissen. Kurz, dicht, deutsch. Keine Code-Blöcke."},
         {"role": "user", "content": prompt}
     ]
 }))

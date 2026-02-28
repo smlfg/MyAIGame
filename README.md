@@ -138,7 +138,7 @@ Shell-Scripts die automatisch Context sammeln — kostet $0 in LLM-Tokens.
 
 ---
 
-## Installation
+### 4. ai-Command installieren (optional)
 
 ```bash
 # Repository klonen
