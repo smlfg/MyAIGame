@@ -8,6 +8,7 @@ IRON RULE: Always exit 0. Never block the agent.
 """
 
 import json
+import os
 import sys
 
 
@@ -76,6 +77,8 @@ def main():
         if not transcript_path:
             sys.exit(0)
 
+        session_id = os.path.basename(transcript_path).replace(".jsonl", "") if transcript_path else ""
+
         text = _read_last_assistant_text(transcript_path)
         if not text or not text.strip():
             sys.exit(0)
@@ -86,7 +89,9 @@ def main():
         # Send to daemon (fire-and-forget: don't wait for narration to finish)
         import http.client
 
-        payload = json.dumps({"text": text, "source": "claude_stop"}).encode()
+        project_title = os.path.basename(os.getcwd())
+
+        payload = json.dumps({"text": text, "source": "claude_stop", "session_id": session_id, "title": project_title}).encode()
 
         try:
             conn = http.client.HTTPConnection("127.0.0.1", 7742, timeout=2)

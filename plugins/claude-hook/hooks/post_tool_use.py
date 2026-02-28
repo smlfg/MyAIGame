@@ -8,6 +8,7 @@ IRON RULE: Always exit 0. Never block the agent.
 """
 
 import json
+import os
 import sys
 
 # Tools that produce noise — skip narration for these
@@ -23,6 +24,7 @@ def main():
         data = json.loads(raw)
 
         tool_name = data.get("tool_name", "unknown")
+        session_id = data.get("session_id", "")
 
         # Skip noisy tools
         if tool_name in SKIP_TOOLS:
@@ -69,9 +71,13 @@ def main():
         import http.client
         import urllib.parse
 
+        project_title = os.path.basename(os.getcwd())
+
         payload = json.dumps({
             "text": narration_input,
             "source": "claude_code",
+            "session_id": session_id,
+            "title": project_title,
         }).encode()
 
         try:

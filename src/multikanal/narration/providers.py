@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
+from collections import deque
 from typing import Iterable
 
 import re
@@ -38,7 +40,7 @@ class BaseNarrator(ABC):
 
     @abstractmethod
     def generate(
-        self, text: str, system_prompt: str = "", language: str = ""
+        self, text: str, system_prompt: str = "", language: str = "", session_id: str = ""
     ) -> str: ...
 
     @abstractmethod
@@ -62,19 +64,44 @@ class MinimaxNarrator(BaseNarrator):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
+        self._histories: dict[str, deque] = {}
+        self._history_maxlen: int = 6  # max message pairs per session
+        self._last_active: dict[str, float] = {}
+        self._session_ttl: float = 4 * 3600  # purge after 4h inactivity
 
-    def generate(self, text: str, system_prompt: str = "", language: str = "") -> str:
+    def _purge_old_sessions(self) -> None:
+        now = time.time()
+        expired = [k for k, t in self._last_active.items() if now - t > self._session_ttl]
+        for k in expired:
+            self._histories.pop(k, None)
+            self._last_active.pop(k, None)
+
+    def clear_history(self, session_id: str = "") -> None:
+        if session_id:
+            self._histories.pop(session_id, None)
+            self._last_active.pop(session_id, None)
+        else:
+            self._histories.clear()
+            self._last_active.clear()
+
+    def generate(self, text: str, system_prompt: str = "", language: str = "", session_id: str = "") -> str:
         if not self.api_key or not self.endpoint or not self.model or not text.strip():
             return ""
+
+        key = session_id or "default"
+        self._purge_old_sessions()
+        self._last_active[key] = time.time()
+        history = self._histories.setdefault(key, deque(maxlen=self._history_maxlen * 2))
+
+        messages = [{"role": "system", "content": system_prompt or ""}]
+        messages.extend(list(history))
+        messages.append({"role": "user", "content": text})
 
         payload = {
             "model": self.model,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
-            "messages": [
-                {"role": "system", "content": system_prompt or ""},
-                {"role": "user", "content": text},
-            ],
+            "messages": messages,
         }
 
         headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -108,6 +135,8 @@ class MinimaxNarrator(BaseNarrator):
                 if isinstance(content, str) and content.strip():
                     content = _clean_for_tts(content)
                     if content:
+                        history.append({"role": "user", "content": text})
+                        history.append({"role": "assistant", "content": content})
                         return content
 
             # Fallback: try top-level text/content
@@ -153,7 +182,7 @@ class OllamaNarrator(BaseNarrator):
         self.max_words = max_words
         self.timeout = timeout
 
-    def generate(self, text: str, system_prompt: str = "", language: str = "") -> str:
+    def generate(self, text: str, system_prompt: str = "", language: str = "", session_id: str = "") -> str:
         if not text.strip():
             return ""
 
@@ -217,7 +246,7 @@ class TemplateNarrator(BaseNarrator):
         super().__init__("template")
         self.max_words = max_words
 
-    def generate(self, text: str, system_prompt: str = "", language: str = "") -> str:
+    def generate(self, text: str, system_prompt: str = "", language: str = "", session_id: str = "") -> str:
         if not text.strip():
             return ""
         cleaned = _clean_for_tts(text)
@@ -237,7 +266,7 @@ class PassthroughNarrator(BaseNarrator):
         super().__init__("passthrough")
         self.max_words = max_words
 
-    def generate(self, text: str, system_prompt: str = "", language: str = "") -> str:
+    def generate(self, text: str, system_prompt: str = "", language: str = "", session_id: str = "") -> str:
         if not text.strip():
             return ""
         words = text.strip().split()

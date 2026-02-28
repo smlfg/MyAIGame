@@ -36,6 +36,8 @@ class NarrateRequest(BaseModel):
     source: str = "unknown"
     language: str = ""
     direct_tts: bool = False  # True = skip LLM, speak text directly
+    session_id: str = ""
+    title: str = ""
 
 
 class NarrateResponse(BaseModel):
@@ -52,6 +54,7 @@ class HealthResponse(BaseModel):
     provider_chain: list[str]
     piper_available: bool
     opencode_connected: bool = False
+    session_count: int = 0
 
 
 _start_time: float = 0.0
@@ -160,7 +163,13 @@ async def narrate(req: NarrateRequest):
     async with _narrate_lock:
         audio_cfg = _config.get("audio", {})
         agent_voices = _config.get("tts", {}).get("agent_voices", {})
-        voice_key = agent_voices.get(req.source) or req.language or _tts.default_voice
+        voice_pools = _config.get("tts", {}).get("voice_pools", {})
+        pool = voice_pools.get(req.source)
+        if pool and req.session_id:
+            voice_key = pool[hash(req.session_id) % len(pool)]
+            logger.info("voice_pool: %s → %s (session=%s)", req.source, voice_key, req.session_id[:8])
+        else:
+            voice_key = agent_voices.get(req.source) or req.language or _tts.default_voice
 
         # --- Direct TTS mode: skip LLM, speak text as-is ---
         if req.direct_tts:
@@ -224,9 +233,9 @@ async def narrate(req: NarrateRequest):
         try:
             narration = await asyncio.wait_for(
                 asyncio.to_thread(
-                    _generator.generate, filtered, system_prompt, req.language
+                    _generator.generate, filtered, system_prompt, req.language, req.session_id
                 ),
-                timeout=_config.get("narration", {}).get("timeout_seconds", 15),
+                timeout=_config.get("narration", {}).get("timeout_seconds", 15) + 10,
             )
         except asyncio.TimeoutError:
             narration = ""
@@ -258,6 +267,9 @@ async def narrate(req: NarrateRequest):
             prefix = audio_cfg.get("prefix", "")
 
         audio_text = f"{prefix}{narration}" if prefix else narration
+
+        if req.title and not req.direct_tts:
+            audio_text = f"{req.title}: {audio_text}"
 
         voice_name = _tts.resolve_voice(voice_key)
         wav_path = await asyncio.to_thread(_tts.synthesize, audio_text, voice_name)
@@ -514,12 +526,29 @@ async def stop_audio():
     return {"status": "stopped"}
 
 
+class ResetHistoryRequest(BaseModel):
+    session_id: str = ""
+
+
+@app.post("/reset-history")
+async def reset_history(req: ResetHistoryRequest = None):
+    """Clear narration history for one session or all sessions."""
+    if req is None:
+        req = ResetHistoryRequest()
+    if _generator:
+        _generator.reset_history(req.session_id)
+    return {"status": "ok", "session_id": req.session_id or "all"}
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Health check endpoint."""
     uptime = time.monotonic() - _start_time
     provider_status = _generator.health_map() if _generator else {}
     piper_ok = _tts.check_available() if _tts else False
+    session_count = sum(
+        len(p._histories) for p in (_generator.providers if _generator else []) if hasattr(p, "_histories")
+    )
     return HealthResponse(
         status="ok",
         uptime_seconds=round(uptime, 1),
@@ -527,6 +556,7 @@ async def health():
         provider_chain=[p.name for p in (_generator.providers if _generator else [])],
         piper_available=piper_ok,
         opencode_connected=_opencode_connected,
+        session_count=session_count,
     )
 
 

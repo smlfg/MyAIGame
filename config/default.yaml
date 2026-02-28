@@ -23,7 +23,7 @@ narration:
     model: MiniMax-M2.1
     temperature: 0.6
     max_tokens: 240
-    timeout_seconds: 15
+    timeout_seconds: 10
   - name: ollama
     enabled: true
     ollama_url: http://localhost:11434
@@ -79,6 +79,24 @@ tts:
     codex_wrapper: codex_wrapper
     gemini: gemini
     ai_explain: ai_explain
+  voice_pools:
+    claude_code:
+      - de-DE-FlorianMultilingualNeural
+      - de-DE-BerndNeural
+      - de-DE-ChristophNeural
+      - de-DE-KasperNeural
+      - de-DE-KlausNeural
+      - de-DE-RalfNeural
+      - de-DE-ElkeNeural
+      - de-DE-GiselaNeural
+      - de-DE-KatjaNeural
+      - de-DE-KlarissaNeural
+      - de-DE-LouisaNeural
+      - de-DE-MajaNeural
+      - de-DE-TanjaNeural
+      - de-DE-AmalaNeural
+      - de-AT-IngridNeural
+      - de-AT-JonasNeural
   speed: 1.0
   sentence_streaming: true
   # Per-voice rate/pitch für Edge-TTS (optional)
