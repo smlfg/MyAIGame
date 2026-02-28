@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Launch Claude Code Session Browser
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")/../session-browser" && pwd)"
+exec "$SCRIPT_DIR/run.sh" "$@"

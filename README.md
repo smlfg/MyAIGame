@@ -203,6 +203,28 @@ Die Server starten automatisch wenn Claude Code sie braucht — kein Daemon, kei
 
 ---
 
+## Session Browser
+
+Streamlit-basierte GUI zum Durchsuchen, Filtern und Analysieren deiner Claude Code Sessions.
+
+| Feature | Details |
+|---------|---------|
+| **Dashboard** | 2x5 Grid mit den letzten 10 Sessions — Titel, Kosten, Dauer, Message-Count |
+| **Volltextsuche** | Durchsucht alle Session-Messages nach Stichworten |
+| **Resume Commands** | Zeigt fertige `claude --resume` Befehle zum Weitermachen |
+| **Performance** | Parst 315+ JSONL Session Files in ~0.6s |
+
+```bash
+# Starten
+cd session-browser && ./run.sh
+# Oder ueber bin-Tool:
+bin/claude-browser
+```
+
+Details: [session-browser/FOR_SMLFLG.md](session-browser/FOR_SMLFLG.md)
+
+---
+
 ## bin/ Tools
 
 Unabhaengig vom Claude Code Setup — eigenstaendige CLI-Tools.
@@ -211,6 +233,7 @@ Unabhaengig vom Claude Code Setup — eigenstaendige CLI-Tools.
 |------|-----------|
 | **ai** | Linux-Befehle erklaeren: `ai grep` → holt man-page, schickt sie an MiniMax/Ollama, zeigt Erklaerung im Terminal |
 | **ai-speak** | Wie `ai`, aber mit Sprachausgabe ueber MultiKanal TTS Daemon (Edge TTS → Piper → spd-say Fallback) |
+| **claude-browser** | Startet den Session Browser (Streamlit GUI) |
 
 Ausfuehrliche Doku: [bin/README.md](bin/README.md)
 
@@ -233,8 +256,15 @@ MyAIGame/
 ├── README.md                              ← Du bist hier
 ├── bin/
 │   ├── ai                                 # Linux-Befehle erklaeren
-│   └── ai-speak                           # Mit Sprachausgabe
-└── claude-code/
+│   ├── ai-speak                           # Mit Sprachausgabe
+│   └── claude-browser                     # Session Browser starten
+├── session-browser/                       # Streamlit GUI fuer Sessions
+│   ├── app.py                             # Haupt-App (Dashboard + Suche)
+│   ├── session_parser.py                  # JSONL Parser
+│   ├── requirements.txt
+│   ├── run.sh                             # Auto-Setup + Start
+│   └── .streamlit/config.toml             # Dark Theme Config
+├── claude-code/
     ├── CLAUDE.md                          # Kern-Instruktionen
     ├── companion/                         # Detail-Dokumente
     │   ├── ADHD_TEMPLATE.md
