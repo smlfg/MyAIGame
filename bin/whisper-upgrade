@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# whisper-upgrade — Download a better Whisper model for VoiceMode STT
+#
+# Usage:
+#   whisper-upgrade small    # ~461MB, good balance (recommended)
+#   whisper-upgrade medium   # ~1.5GB, better accuracy
+#   whisper-upgrade large-v2 # ~2.9GB, best accuracy, needs more RAM
+#
+# After download, update voicemode.env:
+#   VOICEMODE_WHISPER_MODEL=small  (or medium, large-v2)
+
+set -euo pipefail
+
+MODEL="${1:-small}"
+MODELS_DIR="$HOME/.voicemode/services/whisper/models"
+DOWNLOAD_SCRIPT="$MODELS_DIR/download-ggml-model.sh"
+
+echo "=== Whisper Model Upgrade ==="
+echo "Current model: $(ls -lh "$MODELS_DIR"/ggml-*.bin 2>/dev/null | grep -v for-tests | awk '{print $NF, $5}')"
+echo "Target model: ggml-${MODEL}.bin"
+echo ""
+
+if [[ ! -x "$DOWNLOAD_SCRIPT" ]]; then
+    echo "ERROR: Download script not found at $DOWNLOAD_SCRIPT"
+    exit 1
+fi
+
+case "$MODEL" in
+    small)   echo "Size: ~461MB, RAM: ~1GB, Speed: ~2-3s" ;;
+    medium)  echo "Size: ~1.5GB, RAM: ~2.5GB, Speed: ~4-5s" ;;
+    large-v2) echo "Size: ~2.9GB, RAM: ~5GB, Speed: ~6-8s (no GPU)" ;;
+    *) echo "Unknown model: $MODEL (try: small, medium, large-v2)"; exit 1 ;;
+esac
+
+echo ""
+read -p "Download ggml-${MODEL}.bin? [y/N] " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Aborted."
+    exit 0
+fi
+
+cd "$MODELS_DIR"
+bash "$DOWNLOAD_SCRIPT" "$MODEL"
+
+echo ""
+echo "Done! To activate, edit ~/.voicemode/voicemode.env:"
+echo "  VOICEMODE_WHISPER_MODEL=$MODEL"
+echo ""
+echo "Then restart Whisper: systemctl --user restart voicemode-whisper"

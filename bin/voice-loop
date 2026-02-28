@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# voice-loop — Always-Listening Hotfix for VoiceMode (Ansatz B)
+#
+# Creates a Claude Code prompt that loops converse calls, making
+# the conversation feel continuous. After each response, it immediately
+# listens again.
+#
+# Usage:
+#   voice-loop              # Start continuous voice conversation
+#   voice-loop --once       # Single converse call (default VoiceMode behavior)
+#   voice-loop --stop       # Stop any running voice-loop
+
+set -euo pipefail
+
+LOOP_FLAG="/tmp/.voice-loop-active"
+
+case "${1:-}" in
+    --stop)
+        rm -f "$LOOP_FLAG"
+        echo "Voice loop stopped."
+        exit 0
+        ;;
+    --once)
+        # Inject a single converse call into Claude Code
+        cat <<'PROMPT'
+Use the converse tool to listen to me and respond. Use wait_for_response=true, metrics_level="minimal".
+PROMPT
+        exit 0
+        ;;
+    *)
+        # Create the loop prompt
+        touch "$LOOP_FLAG"
+        cat <<'PROMPT'
+Start a continuous voice conversation loop. Here's how:
+
+1. Call converse with message="Ich höre zu.", wait_for_response=true, metrics_level="minimal"
+2. When you get my response, process it and respond with converse again (with your reply as message and wait_for_response=true)
+3. Keep repeating until I say "stop", "Ende", or "Tschüss"
+4. If the file /tmp/.voice-loop-active doesn't exist, stop the loop
+
+This creates a natural back-and-forth conversation. Always set wait_for_response=true so you listen after speaking.
+PROMPT
+        ;;
+esac
