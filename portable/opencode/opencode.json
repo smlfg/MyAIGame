@@ -1,0 +1,53 @@
+{
+  "$schema": "https://opencode.ai/schema/config.json",
+  "provider": {
+    "anthropic": {
+      "apiKey": "${ANTHROPIC_API_KEY}"
+    },
+    "openai": {
+      "apiKey": "${OPENAI_API_KEY}"
+    }
+  },
+  "model": {
+    "default": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5"
+    },
+    "fast": {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5-20251001"
+    }
+  },
+  "permission": "auto-edit",
+  "_permission_notes": "Maps from Claude Code allow-list. Options: ask (default), auto-edit, allow (full auto). 'auto-edit' is closest to Claude's selective permissions.",
+  "mcp": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/smlflg"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  },
+  "_mcp_notes": "OpenCode supports MCP natively. Gemini MCP omitted (use OpenCode's built-in web search). OpenCode MCP omitted (would be recursive).",
+  "experimental": {
+    "chat": {
+      "system": {
+        "transform": "plugins/context-injection.ts"
+      }
+    },
+    "hooks": {
+      "postResponse": "plugins/post-response.ts",
+      "onError": "plugins/on-error.ts"
+    }
+  },
+  "_experimental_notes": "Plugin paths for hook equivalents. See portable/opencode/plugins/ for implementations."
+}

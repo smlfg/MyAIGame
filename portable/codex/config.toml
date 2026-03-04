@@ -1,0 +1,64 @@
+# Codex CLI Configuration
+# Equivalent of Claude Code settings.json for OpenAI Codex CLI
+# Docs: https://codex.openai.com/docs/configuration
+
+# --- Model & Provider ---
+model = "o4-mini"
+
+# --- Approval Policy ---
+# Maps from Claude Code's permission allow-list approach.
+# Codex options: "suggest" (ask for everything), "auto-edit" (auto-approve file edits),
+#                "full-auto" (auto-approve everything including shell commands)
+# Claude Code allows: git, python3, npm, ls, tree, cp, mkdir, mv — fairly permissive.
+# Closest Codex equivalent: "auto-edit" (safe default) or "full-auto" (matches Claude's permissiveness)
+approval_policy = "auto-edit"
+
+# --- Sandbox ---
+# Codex uses a network-disabled sandbox by default. This is stricter than Claude Code
+# which allows network access for MCP servers. Set to false if MCP servers need network.
+sandbox = true
+
+# --- Providers / Environment ---
+# Codex reads OPENAI_API_KEY from environment.
+# For custom providers, set OPENAI_BASE_URL.
+# No equivalent for Claude Code's mcpServers — Codex does not support MCP natively.
+
+# --- History ---
+history = true
+
+# --- Notify on complete ---
+notify = true
+
+# --- Project Instructions ---
+# Codex reads instructions from these files (in order):
+#   1. ~/.codex/instructions.md (global)
+#   2. .codex/instructions.md (project-level, equivalent to CLAUDE.md)
+#   3. codex.md (project root)
+# The ported AGENTS.md should be copied to .codex/instructions.md
+
+# --- Hooks Equivalent ---
+# Codex does NOT have a native hook system like Claude Code.
+# Workaround strategies:
+#
+# 1. Pre-commit tests (pre_commit_tests.py):
+#    → Use standard git hooks: .git/hooks/pre-commit
+#    → Codex respects git hooks when running git commands in sandbox
+#
+# 2. Syntax check (syntax_check.py):
+#    → No direct equivalent. Codex's own model handles syntax.
+#    → Can add to .git/hooks/pre-commit as additional check.
+#
+# 3. Gather context (gather-context.sh):
+#    → Include as part of instructions.md or run manually before prompts.
+#    → Codex reads project structure automatically.
+#
+# 4. Post-tool narration (post_tool_use.py) / Stop narration (stop.py):
+#    → NOT PORTABLE. These integrate with MultiKanalAgent daemon (localhost:7742).
+#    → Would need a separate wrapper script around codex CLI.
+#
+# 5. Codex advisor (codex_advisor.py) / Session review (codex_session_review.py):
+#    → ALREADY Codex-specific — these ARE the Codex integration.
+#    → In Codex-native mode, use codex's own error handling.
+#
+# Summary: Only pre_commit_tests.py and syntax_check.py are portable via git hooks.
+# Voice/narration hooks require external wrapper scripts.
