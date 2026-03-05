@@ -13,6 +13,14 @@ from gi.repository import GLib
 SERVER_URL = "http://localhost:5050"
 
 
+def _cleanup_tmp(path: str) -> None:
+    """Remove a temp file, ignoring errors."""
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def health_check(callback, error_callback=None) -> None:
     """Check server health asynchronously."""
     _curl_get(f"{SERVER_URL}/health", callback, error_callback)
@@ -52,12 +60,8 @@ def synthesize(text: str, voice: str, speed: float, response_format: str,
     ]
 
     def _on_done(pid, status):
-        try:
-            ok, stdout, stderr = GLib.spawn_command_line_sync(f"cat {tmp_path}")
-        except Exception:
-            pass
-
         if os.waitstatus_to_exitcode(status) != 0:
+            _cleanup_tmp(tmp_path)
             if error_callback:
                 GLib.idle_add(error_callback, "curl failed")
             return
@@ -70,12 +74,14 @@ def synthesize(text: str, voice: str, speed: float, response_format: str,
             elif error_callback:
                 # Read the error body
                 try:
-                    with open(tmp_path) as f:
-                        err = f.read()
+                    with open(tmp_path, "rb") as f:
+                        err = f.read().decode(errors="replace")
                     GLib.idle_add(error_callback, f"Server error: {err[:200]}")
                 except Exception:
                     GLib.idle_add(error_callback, "Empty response from server")
+                _cleanup_tmp(tmp_path)
         except OSError as e:
+            _cleanup_tmp(tmp_path)
             if error_callback:
                 GLib.idle_add(error_callback, str(e))
 
