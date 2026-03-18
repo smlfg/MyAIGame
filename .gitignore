@@ -8,3 +8,6 @@ dist/
 build/
 .cache/
 .streamlit/secrets.toml
+*.sqlite3
+*.db
+node_modules/
